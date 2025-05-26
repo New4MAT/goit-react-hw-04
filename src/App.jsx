@@ -1,60 +1,98 @@
-import { useState, useEffect } from 'react';
-import ContactForm from './components/ContactForm/ContactForm';
-import ContactList from './components/ContactList/ContactList';
-import SearchBox from './components/SearchBox/SearchBox';
-import css from './App.module.css';
+import { useState } from 'react';
+import axios from 'axios';
+import { Toaster } from 'react-hot-toast';
+import SearchBar from './components/SearchBar/SearchBar';
+import ImageGallery from './components/ImageGallery/ImageGallery';
+import Loader from './components/Loader/Loader';
+import ErrorMessage from './components/ErrorMessage/ErrorMessage';
+import LoadMoreBtn from './components/LoadMoreBtn/LoadMoreBtn';
+import ImageModal from './components/ImageModal/ImageModal';
+import styles from './App.module.css';
 
 function App() {
-  const [contacts, setContacts] = useState(() => {
-    const savedContacts = localStorage.getItem('contacts');
-    return savedContacts
-      ? JSON.parse(savedContacts)
-      : [
-          { id: 'id-1', name: 'Rosie Simpson', number: '459-12-56' },
-          { id: 'id-2', name: 'Hermione Kline', number: '443-89-12' },
-          { id: 'id-3', name: 'Eden Clements', number: '645-17-79' },
-          { id: 'id-4', name: 'Annie Copeland', number: '227-91-26' },
-        ];
-  });
-  const [filter, setFilter] = useState('');
+  const [query, setQuery] = useState('');
+  const [images, setImages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [totalPages, setTotalPages] = useState(0);
 
-  useEffect(() => {
-    localStorage.setItem('contacts', JSON.stringify(contacts));
-  }, [contacts]);
-
-  const addContact = newContact => {
-    const isExist = contacts.some(
-      contact => contact.name.toLowerCase() === newContact.name.toLowerCase(),
-    );
-
-    if (isExist) {
-      alert(`${newContact.name} is already in contacts.`);
-      return;
+  const searchImages = async (searchQuery, pageNum = 1) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await axios.get(
+        'https://api.unsplash.com/search/photos',
+        {
+          params: {
+            query: searchQuery,
+            page: pageNum,
+            per_page: 12,
+            client_id: 'L4J6KsdtOZ3O9HFeqJUluzQz-Dxj9auJGDi_NEV7h8E',
+          },
+        },
+      );
+      return response.data;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    } finally {
+      setLoading(false);
     }
-
-    setContacts(prevContacts => [...prevContacts, newContact]);
   };
 
-  const deleteContact = contactId => {
-    setContacts(prevContacts =>
-      prevContacts.filter(contact => contact.id !== contactId),
-    );
+  const handleSearch = async searchQuery => {
+    setQuery(searchQuery);
+    setPage(1);
+    const data = await searchImages(searchQuery);
+    if (data) {
+      setImages(data.results);
+      setTotalPages(data.total_pages);
+    }
   };
 
-  const filteredContacts = contacts.filter(contact =>
-    contact.name.toLowerCase().includes(filter.toLowerCase()),
-  );
+  const handleLoadMore = async () => {
+    const nextPage = page + 1;
+    const data = await searchImages(query, nextPage);
+    if (data) {
+      setImages([...images, ...data.results]);
+      setPage(nextPage);
+    }
+  };
+
+  const openModal = image => {
+    setSelectedImage(image);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+  };
 
   return (
-    <div className={css.container}>
-      <h1 className={css.title}>Phonebook</h1>
-      <ContactForm onAddContact={addContact} />
-      <h2 className={css.subtitle}>Contacts</h2>
-      <SearchBox value={filter} onChange={e => setFilter(e.target.value)} />
-      <ContactList
-        contacts={filteredContacts}
-        onDeleteContact={deleteContact}
-      />
+    <div className={styles.app}>
+      <Toaster position="top-center" />
+      <SearchBar onSubmit={handleSearch} />
+      {error && <ErrorMessage message={error} />}
+      {images.length > 0 && (
+        <ImageGallery images={images} onImageClick={openModal} />
+      )}
+      {loading && <Loader />}
+      {images.length > 0 && page < totalPages && (
+        <LoadMoreBtn onClick={handleLoadMore} />
+      )}
+      {selectedImage && (
+        <ImageModal
+          isOpen={isModalOpen}
+          onClose={closeModal}
+          imageUrl={selectedImage.urls.regular}
+          description={selectedImage.alt_description}
+          author={selectedImage.user.name}
+          likes={selectedImage.likes}
+        />
+      )}
     </div>
   );
 }
